@@ -52,6 +52,7 @@ This analysis answers questions such as:
 
 - SQL (MySQL)
 - Data Analysis
+- Excel (Charts)
 
 ## Sales by Item Type
 
