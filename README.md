@@ -63,4 +63,4 @@ This analysis answers questions such as:
 
 ## Outlet Type Revenue Contribution
 
-![Outlet Type Contribution](outlet_type_revenue.png)
+![Outlet Type Contribution](Outlet Type Revenue Contribution.png)
