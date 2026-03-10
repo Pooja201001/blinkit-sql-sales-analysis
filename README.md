@@ -52,3 +52,15 @@ This analysis answers questions such as:
 
 - SQL (MySQL)
 - Data Analysis
+
+## Sales by Item Type
+
+![Sales by Item Type](sales_by_item_type.png)
+
+## Outlet Size Contribution
+
+![Outlet Size Contribution](outlet_size_contribution.png)
+
+## Outlet Type Revenue Contribution
+
+![Outlet Type Contribution](outlet_type_revenue.png)
