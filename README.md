@@ -59,7 +59,7 @@ This analysis answers questions such as:
 
 ## Outlet Size Contribution
 
-![Outlet Size Contribution](outlet_size_contribution.png)
+![Outlet Size Contribution](Outlet Size Contribution.png)
 
 ## Outlet Type Revenue Contribution
 
