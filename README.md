@@ -65,3 +65,8 @@ This analysis answers questions such as:
 ## Outlet Type Revenue Contribution
 
 ![Outlet Type Contribution](outlet_type_revenue_contribution.png)
+
+## 🔗 Related Links
+
+- 📖 Blog Post: [What I Learned from Analyzing Retail Data Using SQL](https://open.substack.com/pub/poojasinghwork20/p/what-i-learned-from-analyzing-8500?r=382nn7&utm_campaign=post&utm_medium=web)
+- 💼 LinkedIn: [Pooja Singh](http://linkedin.com/in/poojasingh2010)
