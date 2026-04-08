@@ -1,0 +1,284 @@
+-- ============================================================
+-- BLINKIT SALES ANALYSIS
+-- Dataset: 8,523 records | Source: BlinkIT Grocery Data
+-- Goal: Identify revenue drivers and outlet strategy signals
+-- ============================================================
+
+
+-- ============================================================
+-- SETUP: Database creation and table schema
+-- ============================================================
+
+CREATE DATABASE blinkit_project;
+USE blinkit_project;
+
+SHOW VARIABLES LIKE "secure%";
+
+-- Composite primary key on Item + Outlet combination because
+-- the same product can appear across multiple outlets.
+-- This prevents duplicate records at the item-outlet level.
+CREATE TABLE blinkit_data (
+    Item_Fat_Content         VARCHAR(20),
+    Item_Identifier          VARCHAR(20),
+    Item_Type                VARCHAR(50),
+    Outlet_Establishment_Year INT,
+    Outlet_Identifier        VARCHAR(20),
+    Outlet_Location_Type     VARCHAR(20),
+    Outlet_Size              VARCHAR(20),
+    Outlet_Type              VARCHAR(30),
+    Item_Visibility          DECIMAL(10,6),
+    Item_Weight              DECIMAL(5,2),
+    Total_Sales              DECIMAL(10,2),
+    Rating                   DECIMAL(3,2),
+    PRIMARY KEY (Item_Identifier, Outlet_Identifier)
+);
+
+-- Loading from secure upload path (MySQL secure_file_priv location)
+-- NULLIF handles empty strings in CSV — converts them to proper NULLs
+-- so aggregate functions like AVG() ignore them correctly
+LOAD DATA INFILE 'C:/ProgramData/MySQL/MySQL Server 8.0/Uploads/BlinkIT Grocery Data.csv'
+INTO TABLE blinkit_data
+FIELDS TERMINATED BY ','
+ENCLOSED BY '"'
+LINES TERMINATED BY '\n'
+IGNORE 1 ROWS
+(Item_Fat_Content,
+ Item_Identifier,
+ Item_Type,
+ Outlet_Establishment_Year,
+ Outlet_Identifier,
+ Outlet_Location_Type,
+ Outlet_Size,
+ Outlet_Type,
+ @Item_Visibility,
+ @Item_Weight,
+ @Total_Sales,
+ @Rating)
+SET
+Item_Visibility = NULLIF(@Item_Visibility, ''),
+Item_Weight     = NULLIF(@Item_Weight, ''),
+Total_Sales     = NULLIF(@Total_Sales, ''),
+Rating          = NULLIF(@Rating, '');
+
+-- Quick sanity check after load — expect 8,523 rows
+SELECT * FROM blinkit_data;
+SELECT COUNT(*) FROM blinkit_data;
+
+
+-- ============================================================
+-- SECTION 1: Data Cleaning
+-- Standardizing fat content labels before any analysis.
+-- Raw data has 'LF', 'low fat', 'reg' as inconsistent entries —
+-- these must be unified or GROUP BY queries will produce
+-- phantom duplicate rows and wrong totals.
+-- ============================================================
+
+-- Disabling safe update mode to allow UPDATE without a WHERE key
+SET SQL_SAFE_UPDATES = 0;
+
+UPDATE blinkit_data
+SET Item_Fat_Content =
+    CASE
+        WHEN Item_Fat_Content IN ('LF', 'low fat') THEN 'Low Fat'
+        WHEN Item_Fat_Content = 'reg'              THEN 'Regular'
+        ELSE Item_Fat_Content
+    END;
+
+-- Verification step — should return exactly 2 distinct values:
+-- 'Low Fat' and 'Regular'. If anything else appears, recheck source data.
+SELECT DISTINCT Item_Fat_Content FROM blinkit_data;
+
+
+-- ============================================================
+-- SECTION 2: KPIs — Establish the baseline numbers
+-- These four metrics form the executive summary. Every deeper
+-- analysis below should be interpreted relative to these.
+-- ============================================================
+
+-- Total revenue in millions — dividing by 1M for readability
+-- in dashboards and executive presentations
+SELECT 
+    CAST(SUM(total_sales)/1000000 AS DECIMAL(10,2)) AS total_sales_million
+FROM blinkit_data;
+
+-- Average transaction value — helps distinguish whether high total
+-- sales are driven by volume or by high-value individual items
+SELECT 
+    CAST(AVG(total_sales) AS DECIMAL(10,0)) AS avg_sales_per_record
+FROM blinkit_data;
+
+-- Total record count — baseline for all percentage calculations below
+SELECT COUNT(*) AS total_records FROM blinkit_data;
+
+-- Average rating across all products — use as a benchmark
+-- when comparing individual item or outlet ratings later
+SELECT 
+    CAST(AVG(rating) AS DECIMAL(10,1)) AS avg_rating
+FROM blinkit_data;
+
+
+-- ============================================================
+-- SECTION 3: Fat Content Analysis
+-- Business question: Is there a health-conscious buying trend?
+-- If Low Fat consistently outsells Regular, this is a procurement
+-- signal to shift inventory mix toward healthier variants.
+-- ============================================================
+
+-- Overall revenue split by fat content
+SELECT 
+    Item_Fat_Content,
+    CAST(SUM(Total_Sales) AS DECIMAL(10,2)) AS Total_Sales
+FROM blinkit_data
+GROUP BY Item_Fat_Content;
+
+-- Fat content breakdown by city tier (Tier 1 / 2 / 3)
+-- If Tier 1 cities skew more Low Fat, that's a demographic signal
+-- that health-conscious demand is urban and concentrated —
+-- useful for targeted marketing and stocking decisions
+SELECT 
+    Outlet_Location_Type,
+    SUM(CASE WHEN Item_Fat_Content = 'Low Fat'  THEN Total_Sales ELSE 0 END) AS Low_Fat_Sales,
+    SUM(CASE WHEN Item_Fat_Content = 'Regular'  THEN Total_Sales ELSE 0 END) AS Regular_Sales
+FROM blinkit_data
+GROUP BY Outlet_Location_Type
+ORDER BY Outlet_Location_Type;
+
+
+-- ============================================================
+-- SECTION 4: Product Performance
+-- Business question: Which categories deserve priority shelf
+-- space, procurement budget, and app placement?
+-- ============================================================
+
+-- Revenue by item type — sorted descending to immediately
+-- surface the top-performing categories
+SELECT 
+    Item_Type,
+    CAST(SUM(Total_Sales) AS DECIMAL(10,2)) AS Total_Sales
+FROM blinkit_data
+GROUP BY Item_Type
+ORDER BY Total_Sales DESC;
+
+-- Same query with RANK() added — makes it easy to slice
+-- top 5 vs bottom 5 without rewriting, useful for presentations
+-- Bottom-ranked categories are candidates for delisting or
+-- reduced shelf allocation
+SELECT 
+    Item_Type,
+    ROUND(SUM(Total_Sales), 2)                              AS Total_Sales,
+    RANK() OVER (ORDER BY SUM(Total_Sales) DESC)            AS Sales_Rank
+FROM blinkit_data
+GROUP BY Item_Type;
+
+
+-- ============================================================
+-- SECTION 5: Outlet Analysis
+-- Business question: Which outlet type and size should Blinkit
+-- prioritize for future expansion investment?
+-- ============================================================
+
+-- Revenue share by outlet size
+-- Medium outlets driving ~42% suggests an optimal format that
+-- balances SKU variety with manageable operational overhead.
+-- If confirmed, new store rollouts should default to medium format.
+SELECT 
+    Outlet_Size,
+    ROUND(SUM(Total_Sales), 2)                                              AS Total_Sales,
+    ROUND(
+        SUM(Total_Sales) * 100.0 / (SELECT SUM(Total_Sales) FROM blinkit_data),
+    2)                                                                      AS Sales_Pct
+FROM blinkit_data
+GROUP BY Outlet_Size
+ORDER BY Total_Sales DESC;
+
+-- Full outlet type breakdown with all metrics in one view.
+-- Revenue contribution % uses SUM() OVER () (window function) —
+-- cleaner than a subquery and runs in a single pass.
+-- If Type1 exceeds 60% revenue share, flag as concentration risk.
+SELECT 
+    Outlet_Type,
+    ROUND(AVG(Total_Sales), 0) AS Avg_Sales,
+    COUNT(*) AS No_Of_Items,
+    ROUND(AVG(Rating), 2) AS Avg_Rating,
+    ROUND(AVG(Item_Visibility), 2) AS Avg_Item_Visibility,
+    ROUND(SUM(Total_Sales), 2) AS Total_Sales,
+    ROUND(
+        SUM(Total_Sales) * 100.0 / SUM(SUM(Total_Sales)) OVER (),
+    2) AS Revenue_Pct
+FROM blinkit_data
+GROUP BY Outlet_Type
+ORDER BY Revenue_Pct DESC;
+
+-- Top performing outlet type within each city tier using PARTITION BY.
+-- Answers: "In each location type, which outlet format wins?"
+-- Output feeds directly into city-specific expansion playbooks.
+SELECT *
+FROM (
+    SELECT 
+        Outlet_Location_Type,
+        Outlet_Type,
+        ROUND(SUM(Total_Sales), 2)                          AS Total_Sales,
+        RANK() OVER (
+            PARTITION BY Outlet_Location_Type 
+            ORDER BY SUM(Total_Sales) DESC
+        )                                                   AS Location_Rank
+    FROM blinkit_data
+    GROUP BY Outlet_Location_Type, Outlet_Type
+) ranked_outlets
+WHERE Location_Rank = 1;
+
+
+-- ============================================================
+-- SECTION 6: Strategic Signal Queries
+-- These queries test three assumptions that could change
+-- how Blinkit allocates resources and plans operations.
+-- Each one has a stated hypothesis so results are actionable.
+-- ============================================================
+
+-- SIGNAL 1: Does outlet age predict revenue?
+-- Hypothesis: older outlets should earn more due to an
+-- established customer base and brand familiarity.
+-- If the trend is flat or inconsistent, outlet age is not
+-- a useful planning variable — focus on format and location instead.
+SELECT 
+    Outlet_Establishment_Year,
+    COUNT(DISTINCT Outlet_Identifier)                                       AS No_Of_Outlets,
+    ROUND(SUM(Total_Sales), 2)                                              AS Total_Sales,
+    ROUND(AVG(Total_Sales), 0)                                              AS Avg_Sales_Per_Record,
+    ROUND(SUM(Total_Sales) / COUNT(DISTINCT Outlet_Identifier), 2)          AS Sales_Per_Outlet
+FROM blinkit_data
+GROUP BY Outlet_Establishment_Year
+ORDER BY Outlet_Establishment_Year;
+
+-- SIGNAL 2: Does product rating drive revenue?
+-- Hypothesis: higher-rated products should outsell lower-rated ones
+-- if customers are using ratings as a purchase signal.
+-- If Medium Rated outsells High Rated, customers are buying on
+-- habit or availability — ratings UX may need redesign.
+SELECT 
+    CASE 
+        WHEN Rating >= 4              THEN 'High Rated (4+)'
+        WHEN Rating BETWEEN 3 AND 3.99 THEN 'Medium Rated (3–3.99)'
+        ELSE                               'Low Rated (<3)'
+    END AS Rating_Category,
+    ROUND(SUM(Total_Sales), 2) AS Total_Sales
+FROM blinkit_data
+GROUP BY Rating_Category;
+
+-- SIGNAL 3: Does product visibility drive revenue?
+-- Hypothesis: prominently placed products (high visibility score)
+-- should generate more sales.
+-- If low-visibility products still perform well, then product type
+-- and price point matter more than shelf placement —
+-- reallocating visibility spend may have little ROI.
+SELECT 
+    CASE 
+        WHEN Item_Visibility < 0.05                  THEN 'Low (<0.05)'
+        WHEN Item_Visibility BETWEEN 0.05 AND 0.15   THEN 'Medium (0.05–0.15)'
+        ELSE                                              'High (>0.15)'
+    END AS Visibility_Bucket,
+    ROUND(SUM(Total_Sales), 2)  AS Total_Sales,
+    ROUND(AVG(Total_Sales), 2)  AS Avg_Sales
+FROM blinkit_data
+GROUP BY Visibility_Bucket
+ORDER BY Total_Sales DESC;
