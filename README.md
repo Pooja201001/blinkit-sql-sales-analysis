@@ -115,5 +115,5 @@ Blinkit's product and UX teams should A/B test whether surfacing ratings more pr
 | 📊 Live Dashboard | [View on Tableau Public](https://public.tableau.com/views/BlinkitSalesAnalysisDashboard_17757189607720/BlinkitSalesAnalysisDashboard) |
 | 🌐 Project Page | [View on GitHub Pages](https://pooja201001.github.io/blinkit-sql-sales-analysis) |
 | 💻 SQL File | [SQL_Blinkit_Sales.sql](./SQL_Blinkit_Sales.sql) |
-[| 📖 Blog Post | [What I Learned Analyzing 8,500 Records](https://open.substack.com/pub/poojasinghwork20/p/what-i-learned-from-analyzing-8500) |](https://open.substack.com/pub/poojasinghwork20/p/what-i-learned-from-analyzing-8500?r=382nn7&utm_campaign=post&utm_medium=web)
+| 📖 Blog Post | [What I Learned Analyzing 8,500 Records](https://open.substack.com/pub/poojasinghwork20/p/what-i-learned-from-analyzing-8500) |
 | 💼 LinkedIn | [Pooja Singh](http://linkedin.com/in/poojasingh2010) |
