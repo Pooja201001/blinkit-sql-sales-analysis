@@ -108,7 +108,12 @@ Blinkit's product and UX teams should A/B test whether surfacing ratings more pr
 
 ![Outlet Type Contribution](outlet_type_revenue_contribution.png)
 
-## 🔗 Related Links
+## 🔗 Links
 
-- 📖 Blog Post: [What I Learned from Analyzing Retail Data Using SQL](https://open.substack.com/pub/poojasinghwork20/p/what-i-learned-from-analyzing-8500?r=382nn7&utm_campaign=post&utm_medium=web)
-- 💼 LinkedIn: [Pooja Singh](http://linkedin.com/in/poojasingh2010)
+| | |
+|---|---|
+| 📊 Live Dashboard | [View on Tableau Public](https://public.tableau.com/views/BlinkitSalesAnalysisDashboard_17757189607720/BlinkitSalesAnalysisDashboard) |
+| 🌐 Project Page | [View on GitHub Pages](https://pooja201001.github.io/blinkit-sql-sales-analysis) |
+| 💻 SQL File | [blinkit_analysis.sql](./blinkit_analysis.sql) |
+| 📖 Blog Post | [What I Learned Analyzing 8,500 Records](https://open.substack.com/pub/poojasinghwork20/p/what-i-learned-from-analyzing-8500) |
+| 💼 LinkedIn | [Pooja Singh](http://linkedin.com/in/poojasingh2010) |
