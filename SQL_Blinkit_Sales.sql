@@ -282,3 +282,151 @@ SELECT
 FROM blinkit_data
 GROUP BY Visibility_Bucket
 ORDER BY Total_Sales DESC;
+
+-- ============================================================
+-- ANALYSIS: Most Profitable Product–Outlet Combinations
+-- ============================================================
+-- Business question: Which specific product category performs
+-- best in which outlet type, and is that pattern consistent
+-- or driven by a single outlier record?
+--
+-- Why this matters: Blinkit can use this to make targeted
+-- stocking decisions — e.g. if Seafood performs exceptionally
+-- in Supermarket Type1 but poorly in Grocery Stores, the
+-- procurement team should stock it selectively, not universally.
+-- ============================================================
+
+
+-- ============================================================
+-- STEP 1: Simple version — total sales per combination
+-- Good starting point but doesn't tell us if high revenue
+-- is coming from many items or just a few expensive ones.
+-- ============================================================
+
+SELECT
+    Item_Type,
+    Outlet_Type,
+    ROUND(SUM(Total_Sales), 2)   AS Total_Sales,
+    COUNT(*)                     AS Item_Count,
+    ROUND(AVG(Total_Sales), 2)   AS Avg_Sales_Per_Item
+FROM blinkit_data
+GROUP BY Item_Type, Outlet_Type
+ORDER BY Total_Sales DESC
+LIMIT 10;
+
+
+-- ============================================================
+-- STEP 2: Full portfolio query using CTE
+-- Adds rankings, performance vs category average, and flags
+-- which combinations are genuinely strong vs just high-volume.
+-- This is the version worth showing in interviews.
+-- ============================================================
+
+WITH combination_stats AS (
+    -- Base aggregation: one row per product-outlet combination
+    -- Avg_Sales_Per_Item matters more than Total_Sales here —
+    -- a combination with 10 items averaging $500 is more
+    -- interesting than one with 500 items averaging $10
+    SELECT
+        Item_Type,
+        Outlet_Type,
+        Outlet_Size,
+        Outlet_Location_Type,
+        COUNT(*)                            AS Item_Count,
+        ROUND(SUM(Total_Sales), 2)          AS Total_Sales,
+        ROUND(AVG(Total_Sales), 2)          AS Avg_Sales_Per_Item,
+        ROUND(AVG(Rating), 2)               AS Avg_Rating,
+        ROUND(AVG(Item_Visibility), 4)      AS Avg_Visibility
+    FROM blinkit_data
+    GROUP BY Item_Type, Outlet_Type, Outlet_Size, Outlet_Location_Type
+),
+
+category_benchmarks AS (
+    -- Average sales per item for each product category overall.
+    -- Used below to flag whether a combination is outperforming
+    -- its own category average — a much fairer comparison than
+    -- comparing Seafood sales to Fruits & Vegetables sales.
+    SELECT
+        Item_Type,
+        ROUND(AVG(Total_Sales), 2) AS Category_Avg_Sales
+    FROM blinkit_data
+    GROUP BY Item_Type
+),
+
+ranked_combinations AS (
+    -- Join the two CTEs and add:
+    -- 1. Overall rank by avg sales per item
+    -- 2. Rank within each product category (so we find the best
+    --    outlet for each product type, not just globally)
+    -- 3. Performance vs category average as a percentage
+    SELECT
+        cs.Item_Type,
+        cs.Outlet_Type,
+        cs.Outlet_Size,
+        cs.Outlet_Location_Type,
+        cs.Item_Count,
+        cs.Total_Sales,
+        cs.Avg_Sales_Per_Item,
+        cs.Avg_Rating,
+        cs.Avg_Visibility,
+        cb.Category_Avg_Sales,
+
+        -- How much better/worse is this combo vs its category average?
+        -- Positive = outperforming, negative = underperforming
+        ROUND(
+            ((cs.Avg_Sales_Per_Item - cb.Category_Avg_Sales)
+            / cb.Category_Avg_Sales) * 100
+        , 1)                                                        AS Pct_Vs_Category_Avg,
+
+        -- Global rank across all combinations
+        RANK() OVER (
+            ORDER BY cs.Avg_Sales_Per_Item DESC
+        )                                                           AS Overall_Rank,
+
+        -- Rank within each product category — answers "what is the
+        -- best outlet type specifically for Dairy?" etc.
+        RANK() OVER (
+            PARTITION BY cs.Item_Type
+            ORDER BY cs.Avg_Sales_Per_Item DESC
+        )                                                           AS Rank_Within_Category
+
+    FROM combination_stats cs
+    JOIN category_benchmarks cb
+        ON cs.Item_Type = cb.Item_Type
+)
+
+-- ============================================================
+-- FINAL OUTPUT: Top combinations that are genuinely strong
+-- Filters applied:
+-- 1. Overall_Rank <= 20 keeps output scannable
+-- 2. Item_Count >= 5 removes combinations with too few records
+--    to be statistically meaningful (single-item outliers)
+-- Remove or adjust these filters based on your findings
+-- ============================================================
+
+SELECT
+    Overall_Rank,
+    Item_Type,
+    Outlet_Type,
+    Outlet_Size,
+    Outlet_Location_Type,
+    Item_Count,
+    Total_Sales,
+    Avg_Sales_Per_Item,
+    Avg_Rating,
+    Category_Avg_Sales,
+    Pct_Vs_Category_Avg,
+    Rank_Within_Category,
+    -- Plain English label for presentations and dashboards
+    CASE
+        WHEN Pct_Vs_Category_Avg >= 20  THEN 'Strong outperformer'
+        WHEN Pct_Vs_Category_Avg >= 5   THEN 'Slight outperformer'
+        WHEN Pct_Vs_Category_Avg >= -5  THEN 'In line with category'
+        WHEN Pct_Vs_Category_Avg >= -20 THEN 'Slight underperformer'
+        ELSE                                 'Weak — review or delist'
+    END                                                         AS Performance_Label
+
+FROM ranked_combinations
+WHERE Overall_Rank <= 20
+  AND Item_Count >= 5
+ORDER BY Overall_Rank;
